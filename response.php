@@ -7,42 +7,105 @@ use OpenAI;
 $yourApiKey = getenv('OPENAI_API_KEY');
 $client = OpenAI::client($yourApiKey);
 
+$host = "localhost";
+$port = 3306;
+$socket = "MySQL";
+$user = "root";
+$password = "bluellama1";
+$dbname = "aixhibit";
 
-$query = $_POST['query'];
-//$query_type = $_POST['query_type']; //name, theme, genre
+$description = "default description";
+$artistID = -1;
+$image = array();
 
 
 
-// check if name in database
-// if name in database, return description
-// else, generate description
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 
-$description = $client->completions()->create([
-    'model' => 'gpt-3.5-turbo-instruct',
-    'prompt' => 'Construct an artists description (art style, method, medium, etc.) for the following artist: \n\nArtist Name: ' . $query . '\		n\nArtist Description:',
-    'max_tokens' => 250,
-    'temperature' => 0.7
-]);
+    $query = $_POST['query'];
+    //$query_type = $_POST['query_type']; //name, theme, genre
 
-$description = $description->choices[0]->text;
+    $conn = new mysqli($host, $user, $password, $dbname, $port, $socket)
+        or die('Could not connect to the database server' . mysqli_connect_error());
 
-$prompt = 'Artist Name: ' . $query . '\nArtist Description:' . $description . '\n Artwork by ' . $query . ':\n';
-//echo $prompt;
-$response = $client->images()->create([
-    'model' => 'dall-e-2',
-    'prompt' => $prompt,
-    'n' => 3,
-    'size' => '256x256',
-    'response_format' => 'b64_json',
-]);
+    $stmt = $conn->prepare("SELECT * FROM artists WHERE ArtistName = ?");
+    $stmt->bind_param("s", $query);
+    $stmt->execute();
+    $result = $stmt->get_result();
 
-foreach ($response->data as $data) {
-    $data->url; // 'https://oaidalleapiprodscus.blob.core.windows.net/private/...'
-    $data->b64_json; // null
+    // check if name in database
+    // if name in database, return description
+    // else, generate description
+
+    if ($result->num_rows > 0) {
+        
+        $rows = $result->fetch_all(MYSQLI_ASSOC);
+        foreach ($rows as $row) {
+            $description = $row["Description"];
+            $artistID = $row["ArtistID"];
+        }
+        // get artist images based on artist ID
+        $stmt = $conn->prepare("SELECT * FROM artwork WHERE ArtistID = ?");
+        $stmt->bind_param("i", $artistID);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows > 0) {
+            // get b64 data from image column
+            $rows = $result->fetch_all(MYSQLI_ASSOC);
+            //append to image array
+            foreach ($rows as $row) {
+                $image[] = $row["Image"];
+            }
+            
+        }
+        $stmt->close();
+
+    } else {
+
+        $description = $client->completions()->create([
+            'model' => 'gpt-3.5-turbo-instruct',
+            'prompt' => 'Construct a brief artists description (art style, method, medium, etc.) for the following artist: \n\nArtist Name: ' . $query . '\		n\nArtist Description:',
+            'max_tokens' => 256,
+            'temperature' => 0.7
+        ]);
+
+        $description = $description->choices[0]->text;
+        
+
+        $prompt = 'Artist Name: ' . $query . '\nArtist Description:' . $description . '\n Artwork by ' . $query . ':\n';
+        //echo $prompt;
+        $response = $client->images()->create([
+            'model' => 'dall-e-2',
+            'prompt' => $prompt,
+            'n' => 3,
+            'size' => '256x256',
+            'response_format' => 'b64_json',
+        ]);
+
+        foreach ($response->data as $data) {
+            $image[] = $data->b64_json;
+        }
+
+        // insert into database
+        $artistID = rand(100000, 999999);
+
+        $stmt = $conn->prepare("INSERT INTO artists (ArtistID, ArtistName, Description) VALUES (?, ?, ?)");
+
+        $stmt->bind_param("iss", $artistID, $query, $description);
+        $stmt->execute();
+        
+        foreach ($image as $img) {
+            $artworkID = rand(100000, 999999);
+            $artworkName = $query . " " . rand(100, 999);
+            $stmt = $conn->prepare("INSERT INTO artwork (ArtworkID, ArtworkName, Image, ArtistID) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("isss", $artworkID, $artworkName, $img, $artistID);
+            $stmt->execute();
+
+        }
+
+    }
 }
-
-$image = $response->data;
 
 ?>
 
@@ -84,7 +147,7 @@ $image = $response->data;
             <div class="text-3xl font-bold mb-4"><?php echo $query ?></div>
 
             <!-- Small Subtext Below Title -->
-            <div class="text-sm text-gray-500"><?php echo $description?></div>
+            <div class="text-sm text-gray-500"><?php echo $description ?></div>
 
             <!-- Content Goes Here -->
 
@@ -98,7 +161,7 @@ $image = $response->data;
             <?php if (!empty($image)) : ?>
                 <!-- Display Images -->
                 <?php foreach ($image as $img) : ?>
-                    <img src="data:image/jpeg;base64,<?php echo $img->b64_json; ?>" class="w-full h-full object-cover">
+                    <img src="data:image/jpeg;base64,<?php echo $img; ?>" class="w-full h-full object-cover">
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
