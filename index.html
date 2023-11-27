@@ -76,6 +76,12 @@
             //display the loading image
             $("#loader").removeClass('hidden');
         });
+
+        //check if redirecting to response page
+        if (window.location.href.indexOf("response.php") > -1) {
+            //remove the loading image
+            $("#loader").addClass('hidden');
+        }
     </script>
 </body>
 

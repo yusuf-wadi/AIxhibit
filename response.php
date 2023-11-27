@@ -20,7 +20,7 @@ $query = $_POST['query'];
 
 $description = $client->completions()->create([
     'model' => 'gpt-3.5-turbo-instruct',
-    'prompt' => 'Construct an artists description for the following artist: \n\nArtist Name: ' . $query . '\		n\nArtist Description:',
+    'prompt' => 'Construct an artists description (art style, method, medium, etc.) for the following artist: \n\nArtist Name: ' . $query . '\		n\nArtist Description:',
     'max_tokens' => 250,
     'temperature' => 0.7
 ]);
@@ -34,7 +34,7 @@ $response = $client->images()->create([
     'prompt' => $prompt,
     'n' => 3,
     'size' => '256x256',
-    'response_format' => 'url',
+    'response_format' => 'b64_json',
 ]);
 
 foreach ($response->data as $data) {
@@ -98,7 +98,7 @@ $image = $response->data;
             <?php if (!empty($image)) : ?>
                 <!-- Display Images -->
                 <?php foreach ($image as $img) : ?>
-                    <img src="<?php echo $img->url; ?>" class="w-full h-full">
+                    <img src="data:image/jpeg;base64,<?php echo $img->b64_json; ?>" class="w-full h-full object-cover">
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
