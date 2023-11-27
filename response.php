@@ -73,7 +73,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $description = $description->choices[0]->text;
         
 
-        $prompt = 'Artist Name: ' . $query . '\nArtist Description:' . $description . '\n Artwork by ' . $query . ':\n';
+        $prompt = $client->completions()->create([
+            'model' => 'gpt-3.5-turbo-instruct',
+            'prompt' => 'This is ' . $query . '. Description: ' . $description . '\n\n Name and describe art by them:',
+        ]);
+        $prompt = $prompt->choices[0]->text;
         //echo $prompt;
         $response = $client->images()->create([
             'model' => 'dall-e-2',
