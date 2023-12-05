@@ -18,29 +18,48 @@ $description = "default description";
 $artistID = -1;
 $image = array();
 
-
+function return_data_from_sql($query, $conn)
+{
+    $stmt = $conn->prepare($query);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $rows = $result->fetch_all(MYSQLI_ASSOC);
+        return $rows;
+    }
+    else {
+        return null;
+    }
+}
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 
     $query = $_POST['query'];
-    //$query_type = $_POST['query_type']; //name, theme, genre
+    //$query_type = $_POST['query_type']; //name, theme, ge
+    
+    
 
     $conn = new mysqli($host, $user, $password, $dbname, $port, $socket)
         or die('Could not connect to the database server' . mysqli_connect_error());
 
-    $stmt = $conn->prepare("SELECT * FROM artists WHERE ArtistName = ?");
-    $stmt->bind_param("s", $query);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // get last id in case of new artist
+    $rows = return_data_from_sql("SELECT * FROM artists ORDER BY ArtistID DESC LIMIT 1", $conn);
+    if ($rows == null) {
+        $lastID = 0;
+    }
+    else {
+        $rows = $rows[0];
+        $lastID = $rows["ArtistID"];
+    }
+
+    $rows = return_data_from_sql("SELECT * FROM artists WHERE ArtistName = '$query'", $conn);
 
     // check if name in database
     // if name in database, return description
     // else, generate description
 
-    if ($result->num_rows > 0) {
-        
-        $rows = $result->fetch_all(MYSQLI_ASSOC);
+    if ($rows != null) {
         foreach ($rows as $row) {
             $description = $row["Description"];
             $artistID = $row["ArtistID"];
@@ -67,7 +86,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             'model' => 'gpt-3.5-turbo-instruct',
             'prompt' => 'Construct a brief artists description (art style, method, medium, etc.) for the following artist: \n\nArtist Name: ' . $query . '\		n\nArtist Description:',
             'max_tokens' => 256,
-            'temperature' => 0.7
+            'temperature' => 1.0
         ]);
 
         $description = $description->choices[0]->text;
@@ -75,7 +94,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $prompt = $client->completions()->create([
             'model' => 'gpt-3.5-turbo-instruct',
-            'prompt' => 'This is ' . $query . '. Description: ' . $description . '\n\n Name and describe art by them:',
+	    'prompt' => 'This is ' . $query . '. Description: ' . $description . '\n\n Name and describe art by them:',
+	    'temperature' => 1.0
         ]);
         $prompt = $prompt->choices[0]->text;
         //echo $prompt;
@@ -92,7 +112,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         }
 
         // insert into database
-        $artistID = rand(100000, 999999);
+        $artistID = $lastID + 1;
 
         $stmt = $conn->prepare("INSERT INTO artists (ArtistID, ArtistName, Description) VALUES (?, ?, ?)");
 
